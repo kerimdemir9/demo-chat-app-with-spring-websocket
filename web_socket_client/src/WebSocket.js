@@ -1,10 +1,11 @@
-import React, { useState, useEffect } from "react";
+import React, { useState } from "react";
 import { Client } from "@stomp/stompjs";
 import SockJS from "sockjs-client";
 
 const WebSocketChat = () => {
     const [stompClient, setStompClient] = useState(null);
     const [username, setUsername] = useState("");
+    const [accessToken, setAccessToken] = useState("");
     const [isConnected, setIsConnected] = useState(false);
     const [broadcastMessage, setBroadcastMessage] = useState("");
     const [privateMessage, setPrivateMessage] = useState("");
@@ -17,28 +18,36 @@ const WebSocketChat = () => {
             alert("Please enter a username!");
             return;
         }
+        if (!accessToken.trim()) {
+            alert("Please enter an access token!");
+            return;
+        }
 
         const socket = new SockJS("http://localhost:8888/chat");
         const client = new Client({
             webSocketFactory: () => socket,
             reconnectDelay: 5000,
+            connectHeaders: { Authorization: `Bearer ${accessToken}` }, // ✅ Send token on connect
             onConnect: () => {
                 console.log(`Connected as ${username}`);
 
-                // ✅ Subscribe to public messages
+                // Subscribe to public messages
                 client.subscribe("/topic/public", (message) => {
                     const receivedMessage = JSON.parse(message.body);
                     setBroadcastMessages((prev) => [...prev, receivedMessage]);
                 });
 
-                // ✅ FIXED: Subscribe to `/user/queue/private` instead of `/user/{username}/private`
+                // Subscribe to private messages (specific user queue)
                 client.subscribe(`/user/${username}/queue/private`, (message) => {
                     const receivedMessage = JSON.parse(message.body);
-                    console.log("message:", receivedMessage);
+                    console.log("Private message:", receivedMessage);
                     setPrivateMessages((prev) => [...prev, receivedMessage]);
                 });
 
                 setIsConnected(true);
+            },
+            onStompError: (frame) => {
+                console.error("WebSocket error: ", frame.headers["message"]);
             },
             onDisconnect: () => {
                 console.log("Disconnected from WebSocket");
@@ -50,10 +59,12 @@ const WebSocketChat = () => {
         setStompClient(client);
     };
 
+    // ✅ Ensure token is included in EVERY message
     const sendBroadcast = () => {
         if (stompClient && broadcastMessage.trim() !== "") {
             stompClient.publish({
                 destination: "/app/broadcast",
+                headers: { Authorization: `Bearer ${accessToken}` }, // ✅ Send token
                 body: JSON.stringify({ from: username, text: broadcastMessage }),
             });
             setBroadcastMessage("");
@@ -64,6 +75,7 @@ const WebSocketChat = () => {
         if (stompClient && privateMessage.trim() !== "" && recipient.trim() !== "") {
             stompClient.publish({
                 destination: "/app/private",
+                headers: { Authorization: `Bearer ${accessToken}` }, // ✅ Send token
                 body: JSON.stringify({ from: username, text: privateMessage, to: recipient }),
             });
             setPrivateMessage("");
@@ -72,6 +84,18 @@ const WebSocketChat = () => {
 
     return (
         <div style={{ maxWidth: "600px", margin: "auto", padding: "20px", fontFamily: "Arial, sans-serif" }}>
+            {/* ✅ Access Token Input (Always Visible) */}
+            <div style={{ marginBottom: "10px" }}>
+                <label>Access Token:</label>
+                <input
+                    type="text"
+                    placeholder="Enter access token"
+                    value={accessToken}
+                    onChange={(e) => setAccessToken(e.target.value)}
+                    style={{ width: "100%", padding: "5px", marginBottom: "10px" }}
+                />
+            </div>
+
             {!isConnected ? (
                 <div style={{ textAlign: "center" }}>
                     <h2>Enter Username</h2>

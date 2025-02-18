@@ -22,5 +22,4 @@ create table messages
     type         varchar(255) not null,
     FOREIGN KEY (message_from) REFERENCES user(username) ON DELETE CASCADE,
     FOREIGN KEY (message_to) REFERENCES user(username) ON DELETE CASCADE
-
 );
